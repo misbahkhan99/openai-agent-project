@@ -3,6 +3,8 @@ import os
 from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv())
 from agents import Agent,Runner, RunConfig, AsyncOpenAI, OpenAIChatCompletionsModel
+from openai.types.responses import ResponseTextDeltaEvent
+
 
 gemini_api_key = os.getenv("GEMINI_API_KEY")
 
@@ -41,12 +43,20 @@ async def handle_chat_start():
 @cl.on_message
 async def handle_message(message: cl.Message):
     history = cl.user_session.get("history")
+
+    msg = cl.Message(content = "")
+    await msg.send()
+
     history.append({"role": "user", "content": message.content})
-    result = await Runner.run(
+    result = Runner.run_streamed(
       input = history,
       run_config=config,
       starting_agent= agent1,
     )
+
+    async for event in result.stream_events():
+        if event.type =="raw_response_event" and isinstance(event.data, ResponseTextDeltaEvent):
+            await msg.stream_token(event.data.delta)
 
     history.append({"role": "assistant", "content": result.final_output})
     cl.user_session.set("history", history)
